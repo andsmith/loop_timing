@@ -36,4 +36,4 @@ Test sample output:
                 _thread_method          3       0.684300 (ms) [0.373257]        14.772 %
                 (total)                         0.684300 (ms)                   14.772048 %
 ```
-![Test sample output](https://www.github.com/andsmith/loop_timing/sample_output.png)
+![Test sample output](https://github.com/andsmith/loop_timing/blob/main/sample_output.png)
