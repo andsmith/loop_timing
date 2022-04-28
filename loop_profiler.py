@@ -1,7 +1,6 @@
 """
-Add decorators to functions to be timed.
-Add function calls in main loop. ()
-Analyze/plot performance
+Event-driven profiler, designed around the POV of the cycle-time.  (I.e. of some outer loop)
+With plots.
 """
 import numpy as np
 import time
@@ -10,123 +9,137 @@ import re
 
 from threading import get_ident, Lock, Thread
 
+import enum
+
+
+class WrongThreadException(Exception):
+    pass
+
+
+class EventTypes(enum.Enum):
+    LOOP_START = 0
+    MARKER = 1
+    FUNC_CALL = 2
 
 
 class LoopPerfTimer(object):
- 
     """
+    Class to time functions, collect other timing events, plot results.
     """
-    _EVENTS = []
-    _MAIN_THREAD_ID = None
-    _ENABLED = True
-    _LOOP_INDEX = -1
-    _LOCK = Lock()
 
     def __init__(self):
-        raise Exception("Only use statically.")
+        """
+        """
+        self._main_thread_id = get_ident()
+        self._enabled = False
+        self._loop_index = -1
+        self._events = []
 
-    @staticmethod
-    def reset_enable():
+        self._lock = Lock()
+
+    def _check_ident(self):
+        """
+        Make sure we are in main_thread, optionally setting it so if it's unset, else raise exception
+        :param make_main: Define this thread as "main" if not already so.
+        """
         ident = get_ident()
-        with LoopPerfTimer._LOCK:
+        if self._main_thread_id != ident:
+            raise WrongThreadException("Only call from main thread!")
+
+    def reset(self, enable=False):
+        """
+        Clear all events, optionally start collecting events.
+        """
+        with self._lock:
             _LOOP_INDEX = -1
-            LoopPerfTimer._EVENTS = []
-            LoopPerfTimer._MAIN_THREAD_ID = ident
-            LoopPerfTimer._ENABLED = True
-            print("enabled")
+            self._events = []
+            self._enabled = enable
 
-    @staticmethod
-    def disable():
-        with LoopPerfTimer._LOCK:
-            print("DISABLED")
-            LoopPerfTimer._ENABLED = False
+    def disable(self):
+        """
+        Stop collecting events.
+        """
+        with self._lock:
+            self._enabled = False
 
-    @staticmethod
-    def mark_loop_start():
-        LoopPerfTimer._LOOP_INDEX += 1
+    def enable(self):
+        """
+        Start/resume collecting events.
+        """
+        print("Enabled", get_ident())
+        with self._lock:
+            self._enabled = True
+        print("ed")
+
+    def _add_event(self, event_type, index, **kwargs):
+        """
+        :param event_type: EventTypes enum
+        :param index:  loop index,( possibly different from current)
+        :param kwargs:  Other event key:values
+        :returns: current thread id, time
+        """
         ident = get_ident()
-        index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
+        t = time.perf_counter()
 
-        if LoopPerfTimer._MAIN_THREAD_ID is not None and ident != LoopPerfTimer._MAIN_THREAD_ID:
-            raise Exception("Always call mark_loop_start() from the same (main) thread.")
-        with LoopPerfTimer._LOCK:
-            LoopPerfTimer._EVENTS.append({'thread_id': ident,
-                                          'time': time.perf_counter(),
-                                          'tag': None,
-                                          'loop_index': index,
-                                          'type': 'loop start'})
-            LoopPerfTimer._T_START = time.perf_counter()
-            LoopPerfTimer._MAIN_THREAD_ID = ident
+        if self._enabled:
+            self._events.append(dict(thread_id=ident,
+                                     time=t,
+                                     loop_index=index,
+                                     type=event_type,
+                                     **kwargs))
+        return ident, t
 
-    @staticmethod
-    def mark_stop():
-        ident = get_ident()
-        index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
+    def mark_loop_start(self):
+        """
+        Call at the beginning of every loop, to align plots, etc.
+        Always call from the same thread.  (this defines the "main" thread)
+        """
+        self._check_ident()
 
-        if LoopPerfTimer._MAIN_THREAD_ID != ident:
-            raise Exception("mark_stop() can only be called from the thread that called mark_loop_start()")
+        with self._lock:
+            self._loop_index += 1
+            _, t_start = self._add_event(EventTypes.LOOP_START, self._loop_index)
 
-        with LoopPerfTimer._LOCK:
-            LoopPerfTimer._EVENTS.append({'thread_id': ident,
-                                          'time': time.perf_counter(),
-                                          'tag': None,
-                                          'loop_index': index,
-                                          'type': 'end'})
-            LoopPerfTimer._T_START = time.perf_counter()
-            LoopPerfTimer._MAIN_THREAD_ID = ident
-            LoopPerfTimer._ENABLED = False
+    def time_function(self, func):
+        """
+        Decorator for functions to be timed.
+        """
+        print("CALL", self._enabled, get_ident())
 
-    @staticmethod
-    def time_function(tag=None):
-        def inner(func):
-            def wrapped(*args):
-                ident = get_ident()
-                index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
-                func_name = func.__name__
-                if not LoopPerfTimer._ENABLED:
-                    #print("Disable call")
-                    return func(*args)
+        def timed_func(*args, **kwargs):
+            index = self._loop_index
+            func_name = func.__name__
 
-                start = time.perf_counter()
-                rv = func(*args)
-                stop = time.perf_counter()
+            start = time.perf_counter()
+            rv = func(*args, **kwargs)
+            stop = time.perf_counter()
 
-                record = {'name': func_name,
-                          'tag': tag,
-                          'thread_id': ident,
-                          'start': start,
-                          'time': start,
-                          'loop_index': index,
-                          'stop': stop,
-                          'type': 'function'}
-                # with LoopPerfTimer._LOCK:
-                LoopPerfTimer._EVENTS.append(record)
+            self._add_event(EventTypes.FUNC_CALL,
+                            index,
+                            name=func_name,
+                            start=start,
+                            stop=stop)
+            return rv
 
-                return rv
+        return timed_func
 
-            return wrapped
-
-        return inner
-
-    @staticmethod
-    def add_marker(name, tag=None):
-        if not LoopPerfTimer._ENABLED:
-            print("Disable call")
+    def add_marker(self, name):
+        """
+        Call to add a named marker, i.e. to plots
+        """
+        if not self._enabled:
+            print("FAIL")
             return
-
-        ident = get_ident()
-
-        record = {'name': name,
-                  'tag': tag,
-                  'loop_index': LoopPerfTimer._LOOP_INDEX,
-                  'thread_id': ident,
-                  'time': time.perf_counter(),
-                  'type': 'marker'}
-        LoopPerfTimer._EVENTS.append(record)
-
+        self._add_event(EventTypes.MARKER,
+                        self._loop_index,
+                        name=name)
+    """
     @staticmethod
     def display_data(print_avgs=True, plot=True):
-        stop_event = LoopPerfTimer._EVENTS[-1]
+        import ipdb;
+        ipdb.set_trace()
+
+        stop_event = LoopPerfTimer._events[-1]
 
         if LoopPerfTimer._ENABLED or stop_event['type'] != 'end':
             raise Exception("Call mark_stop() before display_data().")
@@ -225,7 +238,7 @@ class LoopPerfTimer(object):
         if print_avgs:
             print("\n\nFunctions\tname\t\t\ttimes\t\tavg. duration (ms) [std.]\tavg duration (pct)")
             print("\n\t\t(all loops)\t\t%i\t%.3f (ms) [%.5f]" % (
-            n_loops, np.mean(loop_durations) * 1000., np.std(loop_durations) * 1000))
+                n_loops, np.mean(loop_durations) * 1000., np.std(loop_durations) * 1000))
             for thread_id in thread_ids:
                 avg_fracs = []
                 avg_durations = []
@@ -311,8 +324,7 @@ class LoopPerfTimer(object):
             plt.xlim([x_min, x_max])
             plt.show()
 
-            
-            
+    """
 def make_n_colors(n, scale=(.8, .69, .46)):
     """
     Make a palette of evenly distanced colors.
@@ -327,10 +339,9 @@ def make_n_colors(n, scale=(.8, .69, .46)):
                         [scale[2] * np.abs(np.sin(color_range))]])
 
     odds = colors[:, 1::2]
-    colors[:,1::2] = odds[::-1]
+    colors[:, 1::2] = odds[::-1]
     colors = colors[:, :-1]
     return colors.T
-
 
 
 def perf_sleep(t):
@@ -338,78 +349,3 @@ def perf_sleep(t):
     while time.perf_counter() - start < t:
         pass
     return time.perf_counter() - start
-
-
-class LoopPerfTimerTester(object):
-    """Sample class to demonstrate LoopPerfTimer"""
-
-    def __init__(self, n=50):
-        self._n = n
-        self._helper = LoopPerfTimerTesterHelper()
-        self._stop = False
-        self._thread = Thread(target=self._thread_proc)
-        self._thread.start()
-
-    def stop(self):
-        self._stop = True
-
-    @LoopPerfTimer.time_function()
-    def _thread_method(self, x):
-        return x * np.mean(np.random.randn(2300))
-
-    def _thread_proc(self):
-        a = 0
-        while not self._stop:
-            a += 1
-            LoopPerfTimer.add_marker("test_mark_thread")
-            a = self._thread_method(a)
-            time.sleep(0.001)
-
-    @LoopPerfTimer.time_function()
-    def calculate_1(self, x):
-        for _ in range(100):
-            x += np.sum(np.random.rand(100))
-        return x
-
-    @LoopPerfTimer.time_function()
-    def calculate_2(self, x):
-        for _ in range(np.random.randint(10, 100, 1)[0]):
-            x += np.sum(np.random.rand(1000))
-
-        a = self._helper.sub_calc_1(x)
-        return x + x
-
-    def run(self):
-        a, b = 0, 0
-        for i in range(self._n):
-            LoopPerfTimer.mark_loop_start()
-
-            a = self.calculate_2(a)
-            a = self.calculate_1(a)
-            b = self.calculate_2(a)
-            LoopPerfTimer.add_marker('test_mark_main')
-            a = self._helper.sub_calc_2(b)
-        LoopPerfTimer.mark_stop()
-        return a, a
-
-
-class LoopPerfTimerTesterHelper(object):
-    def __init__(self):
-        pass
-
-    @LoopPerfTimer.time_function()
-    def sub_calc_1(self, a):
-        # spend a random amount of time
-        return np.mean(np.random.randn(10000)) * a
-
-    @LoopPerfTimer.time_function()
-    def sub_calc_2(self, b):
-        # spend more random time
-        return np.mean(np.random.randn(30000)) * b
-
-
-if __name__ == "__main__":
-    l = LoopPerfTimerTester(10)
-    l.run()
-    l.stop()
-    LoopPerfTimer.display_data(print_avgs=True, plot=True)
