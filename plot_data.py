@@ -52,7 +52,7 @@ def plot_profile_data(events, main_thread_id):
     # arrange where things will go vertically
     y = 0
     y_coords = {}
-    
+
     events_sorted = {ind: {'main': {'func': [],
                                     'mark': []},
                            'threads': {}}
@@ -80,11 +80,8 @@ def plot_profile_data(events, main_thread_id):
         mark_y_coord = (y_coords[ind][main_thread_id]['bottom'] +
                         y_coords[ind][main_thread_id]['top']) / 2
 
-        y_coords[ind][main_thread_id]['func'] = [{'name': f_name,
-                                                  'y_coord': func_y_coords[i]}
-                                                 for i, f_name in enumerate(f_names)]
-        y_coords[ind][main_thread_id]['mark'] = {'y_coord': mark_y_coord,
-                                                 'names': m_names}
+        y_coords[ind][main_thread_id]['func'] = {f_name: func_y_coords[i] for i, f_name in enumerate(f_names)}
+        y_coords[ind][main_thread_id]['mark'] = {m_name: mark_y_coord for i, m_name in enumerate(m_names)}
 
         # Do it again for each thread (but differently)
         # first sort
@@ -96,8 +93,7 @@ def plot_profile_data(events, main_thread_id):
                                  thread_id=t_id,
                                  loop_index=ind)
 
-            print(funcs)
-            if len(funcs) > 0 or len(marks)>0:
+            if len(funcs) > 0 or len(marks) > 0:
                 events_sorted[ind]['threads'][t_id] = {}
 
                 if len(marks) > 0:
@@ -105,7 +101,6 @@ def plot_profile_data(events, main_thread_id):
 
                 if len(funcs) > 0:
                     events_sorted[ind]['threads'][t_id]['func'] = funcs
-
 
         # now calculate y-coords
         for t_id in non_main_thread_ids:
@@ -130,167 +125,94 @@ def plot_profile_data(events, main_thread_id):
             mark_y_coord = (y_coords[ind][t_id]['bottom'] +
                             y_coords[ind][t_id]['top']) / 2
 
-            y_coords[ind][t_id]['func'] = [{'name': f_name,
-                                            'y_coord': func_y_coords[i]}
-                                           for i, f_name in enumerate(f_names)]
+            y_coords[ind][t_id]['func'] = {f_name: func_y_coords[i] for i, f_name in enumerate(f_names)}
 
-            y_coords[ind][t_id]['mark'] = {'y_coord': mark_y_coord,
-                                           'names': m_names}
+            y_coords[ind][t_id]['mark'] = {m_name: mark_y_coord for i, m_name in enumerate(m_names)}
+
+    func_coords = {}
+    mark_coords = {}
+
+    for ind in loop_indices:
+        # main thread functions in this range
+        funcs = events_sorted[ind]['main']['func']
+        for e in funcs:
+            if e['name'] not in func_coords:
+                func_coords[e['name']] = []
+            x_0 = e['start_t'] - loop_start_times[ind]
+            x_1 = e['stop_t'] - loop_start_times[ind]
+            y = y_coords[ind][main_thread_id]['func'][e['name']]
+
+            func_coords[e['name']].append(np.array([[x_0, y], [x_1, y]]))
+        marks = events_sorted[ind]['main']['mark']
+
+        for e in marks:
+            if e['name'] not in mark_coords:
+                mark_coords[e['name']] = []
+            x = e['time'] - loop_start_times[ind]
+            y = y_coords[ind][main_thread_id]['mark'][e['name']]
+
+            mark_coords[e['name']].append(np.array([x, y]))
+
+        for t_id in events_sorted[ind]['threads']:
+
+            funcs = events_sorted[ind]['threads'][t_id]['func']
+            for e in funcs:
+                if e['name'] not in func_coords:
+                    func_coords[e['name']] = []
+                x_0 = e['start_t'] - loop_start_times[ind]
+                x_1 = e['stop_t'] - loop_start_times[ind]
+                y = y_coords[ind][t_id]['func'][e['name']]
+
+                func_coords[e['name']].append(np.array([[x_0, y], [x_1, y]]))
+            marks = events_sorted[ind]['threads'][t_id]['mark']
+
+            for e in marks:
+                if e['name'] not in mark_coords:
+                    mark_coords[e['name']] = []
+                x = e['time'] - loop_start_times[ind]
+                y = y_coords[ind][t_id]['mark'][e['name']]
+
+                mark_coords[e['name']].append(np.array([x, y]))
 
     import pprint
-    pprint.pprint(y_coords)
+    pprint.pprint(func_coords)
+    pprint.pprint(mark_coords)
 
+    n_colors = len(func_coords)
+    colors = make_n_colors(n=n_colors)
+    plot_handles = []
+    plot_labels = []
+    x_coords, y_coords, plot_kw, plot_str = [], [], {}, 'o'
 
-    thread_spacing = 1.0 / (.5 + n_threads)
-    thickness = 250 / n_loops / n_threads  # make room for more lines
+    
 
-    data = {thread_id: {} for thread_id in thread_ids}
-    events_to_analyze = [e for e in user_events]
-    order = []
+    for plot_ind, func_name in enumerate(function_names):
+        if func_name not in func_coords:
+            print("Weird:  %s" % (func_name,))
+            continue
 
-    function_elevations = {thread_id: {} for thread_id in thread_ids}
+        coords = [np.vstack([coord, (np.nan, np.nan)]) for coord in func_coords[func_name]]
+        pprint.pprint(coords)
+        coords = np.vstack(coords)
+        plot_handles.append(plt.plot(coords[:, 0], coords[:, 1], "-", color=colors[plot_ind], **plot_kw)[0])
+        plot_labels.append(func_name)
 
-    while len(events_to_analyze) > 0:
+    for plot_ind, mark_name in enumerate(marker_names):
+        if mark_name not in mark_coords:
+            print("Weird:  %s" % (mark_name,))
+            continue
 
-        # use type of first one, remove all others of that type, repeat until empty
-        e = events_to_analyze[0]
-        thread_id = e['thread_id']
-        thread_index = [i for i in range(n_threads) if thread_ids[i] == thread_id][0]
-        if e['type'] == 'function':
-            function_elevations[thread_id][e['name']] = len(function_elevations[thread_id])
-        events = [event for event in events_to_analyze if (e['thread_id'] == event['thread_id'] and
-                                                           e['name'] == event['name'])]
-        events_to_analyze = [event for event in events_to_analyze if not (e['thread_id'] == event['thread_id'] and
-                                                                          e['name'] == event['name'])]
+        coords = np.array(mark_coords[mark_name])
 
-        order.append((thread_id, e['name']))
-        data[thread_id][e['name']] = {'events': [],
-                                      'loop_intervals': [],
-                                      'plot_y_coords': [],
-                                      'loop_marker_times': [],
-                                      'durations': [],
-                                      'fractions': [],
-                                      'count': len(events),
-                                      'type': e['type']}
-        for event in events:
-            li = event['loop_index']
-            try:
-                loop_start = loop_start_times[loop_reverse_index[li]]
-            except:
-                import pprint
-                pprint.pprint(event)
-                import ipdb
-                ipdb.set_trace()
-            loop_interval, duration, loop_time, fraction = None, None, None, None
-            if event['type'] == 'function':
-                loop_interval = [event['start'] - loop_start, event['stop'] - loop_start]
+        plot_handles.append(plt.plot(coords[:, 0], coords[:, 1], "o", color=colors[plot_ind], **plot_kw)[0])
+        plot_labels.append(mark_name)
 
-                duration = event['stop'] - event['start']
-                fraction = duration / loop_durations[loop_reverse_index[li]]
-            elif event['type'] == 'marker':
-                loop_time = event['time'] - loop_start
-
-            y_coord = loop_reverse_index[li] + thread_index * thread_spacing
-
-            data[e['thread_id']][e['name']]['events'].append(event)
-            data[e['thread_id']][e['name']]['loop_intervals'].append(loop_interval)
-            data[e['thread_id']][e['name']]['plot_y_coords'].append(y_coord)
-            data[e['thread_id']][e['name']]['loop_marker_times'].append(loop_time)
-            data[e['thread_id']][e['name']]['durations'].append(duration)
-            data[e['thread_id']][e['name']]['fractions'].append(fraction)
-    max_funcs_per_thread = np.max([len([True for e_name in data[thread_id] if
-                                        data[thread_id][e_name]['type'] == 'function']) for thread_id in
-                                   thread_ids])
-    elevation_scale = thread_spacing / max_funcs_per_thread
-
-    if print_avgs:
-        print("\n\nFunctions\tname\t\t\ttimes\t\tavg. duration (ms) [std.]\tavg duration (pct)")
-        print("\n\t\t(all loops)\t\t%i\t%.3f (ms) [%.5f]" % (
-            n_loops, np.mean(loop_durations) * 1000., np.std(loop_durations) * 1000))
-        for thread_id in thread_ids:
-            avg_fracs = []
-            avg_durations = []
-            thread_index = [i for i in range(n_threads) if thread_ids[i] == thread_id][0]
-            print("\n\tThread:  %s%s" % (
-                thread_index, " (main)\n" if thread_id == LoopPerfTimer._MAIN_THREAD_ID else "\n"))
-            for name in data[thread_id]:
-                count = data[thread_id][name]['count']
-                if data[thread_id][name]['type'] == 'function':
-                    pct = np.mean(data[thread_id][name]['fractions'])
-                    pct_str = "%.3f %%" % (pct * 100,)
-                    dur = np.mean(data[thread_id][name]['durations'])
-                    avg_fracs.append(pct)
-                    avg_durations.append(dur)
-                    dur_str = "%.6f (ms)" % (dur * 1000,)
-                    dur_std_str = "[%.6f]" % (1000. * np.std(data[thread_id][name]['durations']))
-                    print("\t\t%s\t\t%s\t%s %s\t\t%s" % (name, count, dur_str, dur_std_str, pct_str))
-
-            total_frac = np.sum(avg_durations) / np.mean(loop_durations)
-            print("\t\t(total)\t\t\t\t%.6f (ms)\t\t\t%.6f %%" % (np.sum(avg_durations) * 1000,
-                                                                 100 * np.sum(avg_fracs)))
-    t_max = 0.0
-
-    if plot:
-        n_colors = len(order) + 1
-        colors = make_n_colors(n=n_colors)
-        plot_handles = []
-        plot_labels = []
-        x_coords, y_coords, plot_kw, plot_str = [], [], {}, 'o'
-        for pas in ['functions', 'markers']:
-            for plot_ind, (thread_id, name) in enumerate(order):
-                thread_index = [i for i in range(n_threads) if thread_id == thread_ids[i]][0]
-                thread_label = "(main)" if thread_index == 0 else "(thread %i)" % (thread_index,)
-                count = data[thread_id][name]['count']
-                elev = function_elevations[thread_id][name] if name in function_elevations[thread_id] \
-                    else thread_index * thread_spacing
-                thickness_mult = 1.0 if thread_index == 0 else 0.666
-                if data[thread_id][name]['type'] == 'function' and pas == 'functions':
-                    x_coords = [x * 1000 for interval in data[thread_id][name]['loop_intervals'] for x in
-                                (interval + [np.nan])]
-                    y_coords = [elev * elevation_scale + y for y in data[thread_id][name]['plot_y_coords'] for _ in
-                                range(3)]
-                    plot_str = "-"
-                    plot_kw = {'linewidth': thickness * thickness_mult, 'solid_capstyle': 'butt'}
-                elif data[thread_id][name]['type'] == 'marker' and pas == 'markers':
-                    x_coords = [x * 1000 for x in data[thread_id][name]['loop_marker_times']]
-                    y_coords = data[thread_id][name]['plot_y_coords']
-                    plot_str = "o"
-                    plot_kw = {'markersize': 6}
-                elif data[thread_id][name]['type'] not in ['function', 'marker']:
-                    raise Exception("Unknown event type:  %s" % (data[thread_id][name]['type'],))
-                else:
-                    continue
-                if len(x_coords) > 0:
-                    t_max = np.nanmax([np.nanmax(x_coords), t_max])
-                plot_labels.append("%s%s (%s)" % (thread_label, name, count))
-                plot_handles.append(plt.plot(x_coords, y_coords, plot_str, color=colors[plot_ind], **plot_kw)[0])
-        loop_end_x = loop_durations * 1000.
-        t_max = np.nanmax([np.nanmax(loop_end_x), t_max])
-        plot_handles.append(plt.plot(loop_end_x, range(n_loops), '.k', markersize=7)[0])
-        plot_labels.append("loop ends")
-
-        # plot lines separating loop iterations
-        x_max = t_max * 1.025
-        x_min = x_max * -0.025
-        divisions_y = np.arange(0.0, n_loops)
-        y_coords = [y for y in divisions_y for _ in range(3)]
-        x_coords = [x for _ in divisions_y for x in (x_min, x_max, np.nan)]
-        plt.plot(x_coords, y_coords, 'k-', linewidth=0.3)
-
-        # plot lines for each thread
-        thread_offsets = np.arange(1.0, n_threads) * thread_spacing
-        y_coords = [yc + to for to in thread_offsets for yc in y_coords]
-        x_coords = [xc for _ in thread_offsets for xc in x_coords]
-        plt.plot(x_coords, y_coords, 'k:', linewidth=0.3)
-
-        plt.title("Timing results for %i loops" % (n_loops,))
-        plt.ylabel('loop index')
-        plt.xlabel("ms")
-        legend_names = [re.sub('^_', '', ln) for ln in plot_labels]
-        plt.legend(plot_handles, legend_names, loc='upper right')
-        # plt.gca().invert_yaxis()
-        plt.xlim([x_min, x_max])
-        plt.show()
+    plt.title("Timing results for %i loops" % (n_loops,))
+    plt.ylabel('loop index')
+    plt.xlabel("ms")
+    plt.legend(plot_handles, plot_labels, loc='upper right')
+    # plt.gca().invert_yaxis()
+    plt.show()
 
 
 def make_n_colors(n, scale=(.8, .69, .46)):
