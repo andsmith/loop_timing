@@ -47,10 +47,11 @@ def plot_profile_data(events, main_thread_id):
         print("\tThread_ids:  %s" % (thread_ids,))
 
     plot_dims = {'loop_height': 1.0,
-                 'thread_height': 0.7}
+                 'thread_height': 0.7,
+                 'loop_spacing': .05}
 
     # arrange where things will go vertically
-    y = 0
+    y = -plot_dims['loop_spacing']
     y_coords = {}
 
     events_sorted = {ind: {'main': {'func': [],
@@ -58,8 +59,16 @@ def plot_profile_data(events, main_thread_id):
                            'threads': {}}
                      for ind in loop_indices}
     # events_sorted = {}
+    heavy_lines_y = []
+    light_lines_y = []
 
     for ind in loop_indices:
+
+
+        y -= plot_dims['loop_spacing']
+        heavy_lines_y.append(y)
+        y -= plot_dims['loop_spacing']
+
         # main thread functions in this range
         y_inc = y - plot_dims['loop_height']
         y_coords[ind] = {main_thread_id: {'top': y, 'bottom': y_inc}}
@@ -86,6 +95,7 @@ def plot_profile_data(events, main_thread_id):
         # Do it again for each thread (but differently)
         # first sort
         for t_id in non_main_thread_ids:
+
             funcs = _filter_sort(EventTypes.FUNC_CALL,
                                  thread_id=t_id,
                                  loop_index=ind)
@@ -106,6 +116,7 @@ def plot_profile_data(events, main_thread_id):
         for t_id in non_main_thread_ids:
             if t_id not in events_sorted[ind]['threads']:
                 continue
+            light_lines_y.append(y)
             f_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['func'] if 'func' in
                                 events_sorted[ind]['threads'][t_id]])
             m_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['mark'] if 'mark' in
@@ -118,6 +129,7 @@ def plot_profile_data(events, main_thread_id):
                                    'bottom': y_inc}
             y = y_inc
 
+
             func_y_coords = np.linspace(y_coords[ind][t_id]['bottom'],
                                         y_coords[ind][t_id]['top'],
                                         n_funcs)
@@ -129,8 +141,12 @@ def plot_profile_data(events, main_thread_id):
 
             y_coords[ind][t_id]['mark'] = {m_name: mark_y_coord for i, m_name in enumerate(m_names)}
 
+    heavy_lines_y.append(y-plot_dims['loop_spacing'])
+
     func_coords = {}
     mark_coords = {}
+
+    line_styles = {}
 
     for ind in loop_indices:
         # main thread functions in this range
@@ -141,7 +157,7 @@ def plot_profile_data(events, main_thread_id):
             x_0 = e['start_t'] - loop_start_times[ind]
             x_1 = e['stop_t'] - loop_start_times[ind]
             y = y_coords[ind][main_thread_id]['func'][e['name']]
-
+            line_styles[e['name']] = '-'
             func_coords[e['name']].append(np.array([[x_0, y], [x_1, y]]))
         marks = events_sorted[ind]['main']['mark']
 
@@ -162,7 +178,7 @@ def plot_profile_data(events, main_thread_id):
                 x_0 = e['start_t'] - loop_start_times[ind]
                 x_1 = e['stop_t'] - loop_start_times[ind]
                 y = y_coords[ind][t_id]['func'][e['name']]
-
+                line_styles[e['name']] = '-'
                 func_coords[e['name']].append(np.array([[x_0, y], [x_1, y]]))
             marks = events_sorted[ind]['threads'][t_id]['mark']
 
@@ -174,29 +190,29 @@ def plot_profile_data(events, main_thread_id):
 
                 mark_coords[e['name']].append(np.array([x, y]))
 
-    import pprint
-    pprint.pprint(func_coords)
-    pprint.pprint(mark_coords)
-
     n_colors = len(func_coords)
     colors = make_n_colors(n=n_colors)
     plot_handles = []
     plot_labels = []
     x_coords, y_coords, plot_kw, plot_str = [], [], {}, 'o'
 
-    
+    # now plot everything
 
+    # plot function calls
     for plot_ind, func_name in enumerate(function_names):
         if func_name not in func_coords:
             print("Weird:  %s" % (func_name,))
             continue
 
         coords = [np.vstack([coord, (np.nan, np.nan)]) for coord in func_coords[func_name]]
-        pprint.pprint(coords)
+
         coords = np.vstack(coords)
-        plot_handles.append(plt.plot(coords[:, 0], coords[:, 1], "-", color=colors[plot_ind], **plot_kw)[0])
+        plot_handles.append(
+            plt.plot(coords[:, 0], coords[:, 1], line_styles[func_name], linewidth=3, color=colors[plot_ind], zorder=2,
+                     **plot_kw)[0])
         plot_labels.append(func_name)
 
+    # plot markers
     for plot_ind, mark_name in enumerate(marker_names):
         if mark_name not in mark_coords:
             print("Weird:  %s" % (mark_name,))
@@ -204,11 +220,21 @@ def plot_profile_data(events, main_thread_id):
 
         coords = np.array(mark_coords[mark_name])
 
-        plot_handles.append(plt.plot(coords[:, 0], coords[:, 1], "o", color=colors[plot_ind], **plot_kw)[0])
+        plot_handles.append(plt.plot(coords[:, 0], coords[:, 1], "o", color=colors[plot_ind], zorder=3, **plot_kw)[0])
         plot_labels.append(mark_name)
 
+    heavy_lines_y = np.array(heavy_lines_y)
+    # plot divider lines
+    xmin, xmax = plt.xlim()
+    plt.hlines(heavy_lines_y[1:-1], xmin, xmax , linestyles='solid', colors='black', zorder=1, linewidth=.5)
+    #plt.hlines(light_lines_y, xmin, xmax / 10, linestyles='dotted', colors='black', zorder=0, linewidth=0)
+    plt.xlim(xmin, xmax)
+    y_ticks = (heavy_lines_y[1:] + heavy_lines_y[:-1]) / 2.0
+
+    plot_labels = [" %s" % (lab,) if lab.startswith('_') else lab for lab in plot_labels]
     plt.title("Timing results for %i loops" % (n_loops,))
     plt.ylabel('loop index')
+    plt.yticks(y_ticks, loop_indices)
     plt.xlabel("ms")
     plt.legend(plot_handles, plot_labels, loc='upper right')
     # plt.gca().invert_yaxis()
