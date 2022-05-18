@@ -230,7 +230,8 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
                          '-',
                          linewidth=plot_width,
                          color=colors[name],
-                         zorder=2)[0])
+                         zorder=2,
+                         solid_capstyle='butt')[0])
         elif name_types[name] == EventTypes.MARKER:
             coords = np.array(marker_coords[name])
             coords[:, 0] *= time_scale
