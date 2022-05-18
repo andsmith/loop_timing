@@ -6,7 +6,7 @@ Thread-aware profiling & performance analysis for apps with realtime loops.
 ```
 from loop_timing.loop_profiler import LoopPerfTimer
 ```           
-2. Decorate each function to be profiled:
+2. Decorate each function/method to be profiled:
 ```
     @LoopPerfTimer.time_function
     def calculate_1(self, x):
@@ -31,3 +31,8 @@ from loop_timing.loop_profiler import LoopPerfTimer
 ```
 Test sample output:
 ![sample output](https://github.com/andsmith/loop_timing/blob/main/output.png?raw=true)
+
+## To do
+Incorporate multiprocessing into profiler: 
+```  
+(process #) [thread #] Classname.methodname
