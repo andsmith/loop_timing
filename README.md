@@ -6,7 +6,7 @@ Thread-aware profiling & performance analysis for apps with realtime loops.
 ```
 from loop_timing.loop_profiler import LoopPerfTimer
 ```           
-2. Decorate each function/method to be profiled:
+2. Don't instantiate, but decorate each function/method to be profiled:
 ```
     @LoopPerfTimer.time_function
     def calculate_1(self, x):
@@ -14,7 +14,7 @@ from loop_timing.loop_profiler import LoopPerfTimer
 2. Add some markers you want to annotate the profile.
 ```
     ...
-    @LoopPerfTimer.add_marker("halfway")
+    LoopPerfTimer.add_marker("halfway")
     ...
 ```
 3. Add some function calls to synchronize the profiler:
@@ -27,7 +27,7 @@ from loop_timing.loop_profiler import LoopPerfTimer
 ```
 4. Call the display function to print/graph timing data:
 ```
-    LoopPerfTimer.display_data(print_avgs=True, plot=True)
+    LoopPerfTimer.display_data()
 ```
 Run the demo: `> python demo_loop_profiler.py`
 
