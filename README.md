@@ -29,7 +29,7 @@ from loop_timing.loop_profiler import LoopPerfTimer
 ```
     LoopPerfTimer.display_data(print_avgs=True, plot=True)
 ```
-Test sample output:
+Run the demo: `> python demo_loop_profiler.py`
 
 ![sample output](https://github.com/andsmith/loop_timing/blob/main/output.png?raw=true)
 
