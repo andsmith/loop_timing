@@ -10,7 +10,50 @@ def print_profile_data(events, main_thread_id):
     pass
 
 
-def plot_profile_data(events, main_thread_id):
+def _disambiguate_threads_and_functions(event_list, main_thread_id, thread_ids):
+    """
+    change function & marker names to include thread IDs.
+        e.g. "function_1"  becomes "[1] function_1" if it's in the first thread.
+        (no change for main)
+    """
+    # make sure main is first
+    if main_thread_id in thread_ids:
+        thread_ids = [thread_id for thread_id in thread_ids if thread_id != main_thread_id]
+    thread_ids = [main_thread_id] + thread_ids
+    thread_indices = {thread_id: index for index, thread_id in enumerate(thread_ids)}
+    for e in event_list:
+        if e['thread_id'] != main_thread_id:
+            thread_index = thread_indices[e['thread_id']]
+            if e['type'] in [EventTypes.MARKER, EventTypes.FUNC_CALL]:  # rename these
+                e['name'] = "[%i] %s" % (thread_index, e['name'])
+            elif e['type'] not in [EventTypes.LOOP_START]:  # don't rename these
+                raise Exception("Unknown event type:  %s: " % (e['type'],))
+
+
+def _get_function_name_order(events, function_names, n_threads):
+    main_calls = [f for f in function_names if not f.startswith('[')]
+    thread_calls = [[f for f in function_names if f.startswith('[%i]' % (i,))] for i in range(n_threads)]
+
+    def _reorder(names):
+        ordered_names = []
+        index = 0
+        while len(ordered_names) < len(names):
+            if index >= len(events):
+                raise Exception("function name not found in list of events:  %s" % (set(names) - set(ordered_names),))
+
+            if 'name' in events[index] and events[index]['name'] in names:
+                print(events[index])
+                ordered_names.append(events[index]['name'])
+            index += 1
+        return ordered_names
+
+    new_order = _reorder(main_calls)
+    for i in range(n_threads):
+        new_order += _reorder(thread_calls[i])
+    return new_order
+
+
+def plot_profile_data_old(events, main_thread_id):
     def _filter_sort(e_type, thread_id=None, loop_index=None):
         ev = [e for e in events if e['type'] == e_type]
         if thread_id is not None:
@@ -19,25 +62,35 @@ def plot_profile_data(events, main_thread_id):
             ev = [e for e in ev if e['loop_index'] == loop_index]
         return sorted(ev, key=lambda x: x['time'])
 
+    import pprint
+    pprint.pprint(events)
+    thread_ids = list(set([event['thread_id'] for event in events]))
+    n_threads = len(thread_ids)
+
+    _disambiguate_threads_and_functions(events, main_thread_id, thread_ids)
+
     loop_start_events = _filter_sort(EventTypes.LOOP_START)
     function_events = _filter_sort(EventTypes.FUNC_CALL)
     marker_events = _filter_sort(EventTypes.MARKER)
+
     marker_names = list(set([e['name'] for e in marker_events]))
     function_names = list(set([e['name'] for e in function_events]))
+    function_names = _get_function_name_order(events, function_names, n_threads=n_threads)
+    import pprint
+    pprint.pprint(function_names)
     user_events = sorted(function_events + marker_events, key=lambda x: x['time'])
 
     loop_indices = sorted(list(set([e['loop_index'] for e in loop_start_events])))
     last_event_time = np.max([e['time'] for e in events])
     last_event_timex = last_event_time
-    last_event_time_alt = np.max([e['stop_t'] for e in function_events])
-    last_event_time = np.max((last_event_time, last_event_time_alt))
+    if len(function_events) > 0:
+        last_event_time_alt = np.max([e['stop_t'] for e in function_events])
+        last_event_time = np.max((last_event_time, last_event_time_alt))
     loop_start_times = [e['time'] for e in loop_start_events]
     loop_end_times = loop_start_times[1:] + [last_event_time]
     loop_durations = np.array(loop_end_times) - np.array(loop_start_times)
 
-    thread_ids = list(set([event['thread_id'] for event in events]))
     non_main_thread_ids = [i for i in thread_ids if i != main_thread_id]
-    n_threads = len(thread_ids)
     n_loops = len(loop_start_events)
 
     if True:
@@ -63,7 +116,6 @@ def plot_profile_data(events, main_thread_id):
     light_lines_y = []
 
     for ind in loop_indices:
-
 
         y -= plot_dims['loop_spacing']
         heavy_lines_y.append(y)
@@ -106,21 +158,20 @@ def plot_profile_data(events, main_thread_id):
             if len(funcs) > 0 or len(marks) > 0:
                 events_sorted[ind]['threads'][t_id] = {}
 
-                if len(marks) > 0:
-                    events_sorted[ind]['threads'][t_id]['mark'] = marks
+                # if len(marks) > 0:
+                events_sorted[ind]['threads'][t_id]['mark'] = marks
 
-                if len(funcs) > 0:
-                    events_sorted[ind]['threads'][t_id]['func'] = funcs
+                # if len(funcs) > 0:
+                events_sorted[ind]['threads'][t_id]['func'] = funcs
 
         # now calculate y-coords
         for t_id in non_main_thread_ids:
             if t_id not in events_sorted[ind]['threads']:
                 continue
             light_lines_y.append(y)
-            f_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['func'] if 'func' in
-                                events_sorted[ind]['threads'][t_id]])
-            m_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['mark'] if 'mark' in
-                                events_sorted[ind]['threads'][t_id]])
+
+            f_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['func']])
+            m_names = uniquify([e['name'] for e in events_sorted[ind]['threads'][t_id]['mark']])
 
             n_funcs = len(events_sorted[ind]['main']['func'])
 
@@ -128,7 +179,6 @@ def plot_profile_data(events, main_thread_id):
             y_coords[ind][t_id] = {'top': y,
                                    'bottom': y_inc}
             y = y_inc
-
 
             func_y_coords = np.linspace(y_coords[ind][t_id]['bottom'],
                                         y_coords[ind][t_id]['top'],
@@ -141,7 +191,7 @@ def plot_profile_data(events, main_thread_id):
 
             y_coords[ind][t_id]['mark'] = {m_name: mark_y_coord for i, m_name in enumerate(m_names)}
 
-    heavy_lines_y.append(y-plot_dims['loop_spacing'])
+    heavy_lines_y.append(y - plot_dims['loop_spacing'])
 
     func_coords = {}
     mark_coords = {}
@@ -226,8 +276,8 @@ def plot_profile_data(events, main_thread_id):
     heavy_lines_y = np.array(heavy_lines_y)
     # plot divider lines
     xmin, xmax = plt.xlim()
-    plt.hlines(heavy_lines_y[1:-1], xmin, xmax , linestyles='solid', colors='black', zorder=1, linewidth=.5)
-    #plt.hlines(light_lines_y, xmin, xmax / 10, linestyles='dotted', colors='black', zorder=0, linewidth=0)
+    plt.hlines(heavy_lines_y[1:-1], xmin, xmax, linestyles='solid', colors='black', zorder=1, linewidth=.5)
+    # plt.hlines(light_lines_y, xmin, xmax / 10, linestyles='dotted', colors='black', zorder=0, linewidth=0)
     plt.xlim(xmin, xmax)
     y_ticks = (heavy_lines_y[1:] + heavy_lines_y[:-1]) / 2.0
 
@@ -236,7 +286,7 @@ def plot_profile_data(events, main_thread_id):
     plt.ylabel('loop index')
     plt.yticks(y_ticks, loop_indices)
     plt.xlabel("ms")
-    plt.legend(plot_handles, plot_labels, loc='upper right')
+    plt.legend(plot_handles, plot_labels, loc='upper right', title="[thread #] function/marker")
     # plt.gca().invert_yaxis()
     plt.show()
 

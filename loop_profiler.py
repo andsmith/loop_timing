@@ -17,13 +17,19 @@ class WrongThreadException(Exception):
 class LoopPerfTimer(object):
     """
     Class to time functions, collect other timing events, plot results.
+
     """
+    def __init__(self):
+        raise Exception("Call LoopPerfTimer's methods statically.  Do not instantiate.")
 
     _main_thread_id = get_ident()
     _enabled = True
     _loop_index = -1
     _events = []
     _disable_time = None
+    _n_func_calls_started=0
+
+    _n_func_calls_finished=0
 
     _lock = Lock()
 
@@ -105,18 +111,22 @@ class LoopPerfTimer(object):
 
         def timed_func(*args, **kwargs):
             index = LoopPerfTimer._loop_index
-            func_name = func.__name__
+            func_name = func.__qualname__
+            LoopPerfTimer._n_func_calls_started+=1
+            #print(func_name, "A")
 
             start = time.perf_counter()
             rv = func(*args, **kwargs)
             stop = time.perf_counter()
-
+            LoopPerfTimer._n_func_calls_finished+=1
             LoopPerfTimer._add_event(EventTypes.FUNC_CALL,
                                      index,
                                      t=start,
                                      name=func_name,
                                      start_t=start,
                                      stop_t=stop)
+            #print(func_name, "C")
+
             return rv
 
         return timed_func
@@ -135,7 +145,7 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def display_data(print_avgs=True, plot=True):
-
+        #print(LoopPerfTimer._n_func_calls_started, LoopPerfTimer._n_func_calls_finished)
         if LoopPerfTimer._enabled:
             raise Exception("Call mark_stop() before display_data().")
         if print_avgs:
