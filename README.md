@@ -31,7 +31,7 @@ from loop_timing.loop_profiler import LoopPerfTimer
 ```
 Run the demo: `> python demo_loop_profiler.py`
 
-![sample output](https://github.com/andsmith/loop_timing/blob/main/output.png?raw=true)
+![sample output](https://github.com/andsmith/loop_timing/blob/main/demo_output.png?raw=true)
 
 [NOTE:  running on my i5-4250U CPU @ 1.30GHz]
 ## To do
