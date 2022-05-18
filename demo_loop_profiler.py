@@ -68,14 +68,14 @@ class LoopPerfTimerDemo(object):
 
 @lt.time_function
 def sub_calc_1(a):
-    # spend a random amount of time
+    # spend a fixed amount of time
     return np.mean(np.random.randn(100000)) * a
 
 
 @lt.time_function
 def sub_calc_2(b):
     # spend more random time
-    return np.mean(np.random.randn(3000)) * b
+    return np.mean(np.random.randn(30000)) * b
 
 
 class HelperClass(object):
@@ -84,13 +84,13 @@ class HelperClass(object):
 
     @lt.time_function
     def calculate_1(self):
-        size = np.random.randint(10, 20)
+        size = np.random.randint(43, 47)
         self._x = np.linalg.det(np.random.randn((size * size)).reshape(size, size))
         return self._x
 
     @lt.time_function
     def foo_bar(self):
-        size = np.random.randint(5, 9)
+        size = np.random.randint(40, 45)
         self._x = np.linalg.det(np.random.randn((size * size)).reshape(size, size))
         return self._x
 

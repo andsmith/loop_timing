@@ -30,8 +30,10 @@ from loop_timing.loop_profiler import LoopPerfTimer
     LoopPerfTimer.display_data(print_avgs=True, plot=True)
 ```
 Test sample output:
+
 ![sample output](https://github.com/andsmith/loop_timing/blob/main/output.png?raw=true)
 
+[NOTE:  This was run on a i5-4250U CPU @ 1.30GHz]
 ## To do
 Incorporate multiprocessing into profiler: 
 ```  
