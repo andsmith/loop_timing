@@ -17,7 +17,7 @@ class WrongThreadException(Exception):
 class LoopPerfTimer(object):
     """
     Class to time functions, collect other timing events, plot results.
-
+    NOTE:  don't instantiate, just call static methods, etc
     """
 
     def __init__(self):
@@ -47,7 +47,9 @@ class LoopPerfTimer(object):
     @staticmethod
     def reset(enable=False, burn_in=0):
         """
-        Clear all events, optionally start collecting events.
+        Clear all events, reset, etc.
+        :param enable:  Start collecting data as soon as complete
+        :param burn_in:  throw away this many loops first
         """
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
@@ -68,6 +70,7 @@ class LoopPerfTimer(object):
     def enable(burn_in=0):
         """
         Start/resume collecting events.
+        :param burn_in:  throw away this many loops first
         """
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
@@ -146,7 +149,6 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def display_data():
-
         if LoopPerfTimer._enabled:
             raise Exception("Call mark_stop() before display_data().")
         plot_profile_data(events=LoopPerfTimer._events,

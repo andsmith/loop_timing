@@ -25,12 +25,16 @@ def make_n_colors(n, scale=(.8, .69, .46)):
     return colors.T
 
 
-def _disambiguate_threads_and_functions(event_list, main_thread_id, thread_ids):
+def _disambiguate_threads_and_functions(event_list, main_thread_id):
     """
     change function & marker names to include thread IDs.
         e.g. "function_1"  becomes "[1] function_1" if it's in the first thread.
         (no change for main)
+    :param event_list: all events
+    :param main_thread_id: id of main caller
     """
+    thread_ids = list(set([event['thread_id'] for event in event_list]))
+
     # make sure main is first
     if main_thread_id in thread_ids:
         thread_ids = [thread_id for thread_id in thread_ids if thread_id != main_thread_id]
@@ -47,12 +51,24 @@ def _disambiguate_threads_and_functions(event_list, main_thread_id, thread_ids):
 
 
 def _get_name_order(events, names):
+    """
+    Determine the order of the legend items.
+    :param events:  all events
+    :names:  the list of names to order
+    :returns:  permutation of names, such that:
+        Main thread functions/markers come before those of other threads.
+        Within each thread, the order is the same as the order they were first called (on the first loop).
+    """
     mains = [f for f in names if not f.startswith('[')]
     threads = [f for f in names if f.startswith('[')]
     thread_prefixes = list(set([re.search(r'^(\[[0-9]+\])', tc).groups()[0] for tc in threads]))
     threads_sorted = [[tc for tc in threads if tc.startswith(prefix)] for prefix in thread_prefixes]
 
     def _reorder(name_group):
+        """
+        Re-order a subset of names
+        :param name_group:  rearrange so in the same order as they first appear in the event list
+        """
         ordered_names = []
         index = 0
         while len(ordered_names) < len(name_group):
@@ -74,6 +90,13 @@ def _get_name_order(events, names):
 
 
 def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
+    """
+    Plot data, after profiler has been deactivated
+    :param events:  list of all events
+    :main_thread_id:  which events, etc
+    :chop_early:  Remove events appearing before first loop_start
+    :burn_in:  Discard this many loops before collecting data.
+    """
     events = sorted(events, key=lambda event: event['time'])
     if not chop_early:
         for e in events:
@@ -103,7 +126,7 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
     thread_ids = list(set([event['thread_id'] for event in events]))
     n_threads = len(thread_ids)
 
-    _disambiguate_threads_and_functions(events, main_thread_id, thread_ids)
+    _disambiguate_threads_and_functions(events, main_thread_id)
 
     loop_start_events = _filter_sort(type=EventTypes.LOOP_START)
     function_events = _filter_sort(type=EventTypes.FUNC_CALL)
@@ -143,6 +166,9 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
     n_items = [0]
 
     def _space(next_plot_type):
+        """
+        Determine how much vertical space to add, then do it.
+        """
         n_items[0] += 1
         if next_plot_type == last_plot_type[0] == 'function':
             inc = plot_dims['spacing']['function']

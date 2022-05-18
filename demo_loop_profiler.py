@@ -4,7 +4,7 @@ from threading import Thread
 import time
 
 
-class LoopPerfTimerTester(object):
+class LoopPerfTimerDemo(object):
     """Sample class to demonstrate LoopPerfTimer"""
 
     def __init__(self, n=25, burn=5):
@@ -60,7 +60,7 @@ class LoopPerfTimerTester(object):
             a = self.calculate_1(a)
             self._helper.foo_bar()
             b = self.calculate_2(a)
-            # LoopPerfTimer.add_marker('test_mark_main')
+            lt.add_marker('test_mark_main')
             a = sub_calc_2(b)
         lt.disable()
         return a, a
@@ -96,8 +96,8 @@ class HelperClass(object):
 
 
 if __name__ == "__main__":
-    lp_tester = LoopPerfTimerTester(25, 5)
-    lp_tester.run()
-    lp_tester.stop()
+    lp_demo = LoopPerfTimerDemo(15, 5)
+    lp_demo.run()
+    lp_demo.stop()
 
     lt.display_data()
