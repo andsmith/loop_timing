@@ -7,48 +7,62 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import re
-
+import logging
 from threading import get_ident, Lock, Thread
 
 
 
 class LoopPerfTimer(object):
- 
     """
+    Profiler for realtime loops.
     """
     _EVENTS = []
     _MAIN_THREAD_ID = None
     _ENABLED = True
     _LOOP_INDEX = -1
     _LOCK = Lock()
+    _BURN_IN = 0
 
     def __init__(self):
         raise Exception("Only use statically.")
 
     @staticmethod
-    def reset_enable():
+    def reset_enable(burn_in = 0):
+        """
+        Clear data & start collecting again.
+        :param burn_in:  do not collect data for the first burn_in loops.
+        """
         ident = get_ident()
         with LoopPerfTimer._LOCK:
+            _BURN_IN = burn_in
             _LOOP_INDEX = -1
             LoopPerfTimer._EVENTS = []
             LoopPerfTimer._MAIN_THREAD_ID = ident
             LoopPerfTimer._ENABLED = True
-            print("enabled")
+            logging.info("Loop Profiler enabled.")
 
     @staticmethod
     def disable():
         with LoopPerfTimer._LOCK:
-            print("DISABLED")
+            logging.info("Loop Profiler disabled.")
             LoopPerfTimer._ENABLED = False
 
     @staticmethod
     def mark_loop_start():
-        LoopPerfTimer._LOOP_INDEX += 1
+        
         ident = get_ident()
         index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
-
+        LoopPerfTimer._LOOP_INDEX += 1
+        LoopPerfTimer._BURN_IN -=1
+        
+        if LoopPerfTimer._BURN_IN >= 0:
+            return
+        elif LoopPerfTimer._BURN_IN ==-1:
+            logging.info("Loop Profile burn-in period expired.")
+        
         if LoopPerfTimer._MAIN_THREAD_ID is not None and ident != LoopPerfTimer._MAIN_THREAD_ID:
             raise Exception("Always call mark_loop_start() from the same (main) thread.")
+
         with LoopPerfTimer._LOCK:
             LoopPerfTimer._EVENTS.append({'thread_id': ident,
                                           'time': time.perf_counter(),
@@ -83,8 +97,7 @@ class LoopPerfTimer(object):
                 ident = get_ident()
                 index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
                 func_name = func.__name__
-                if not LoopPerfTimer._ENABLED:
-                    #print("Disable call")
+                if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >=0:
                     return func(*args)
 
                 start = time.perf_counter()
@@ -99,7 +112,6 @@ class LoopPerfTimer(object):
                           'loop_index': index,
                           'stop': stop,
                           'type': 'function'}
-                # with LoopPerfTimer._LOCK:
                 LoopPerfTimer._EVENTS.append(record)
 
                 return rv
@@ -110,8 +122,7 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def add_marker(name, tag=None):
-        if not LoopPerfTimer._ENABLED:
-            print("Disable call")
+        if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >=0:
             return
 
         ident = get_ident()
@@ -191,13 +202,16 @@ class LoopPerfTimer(object):
                                           'fractions': [],
                                           'count': len(events),
                                           'type': e['type']}
-            for event in events:
+            for e_i, event in enumerate(events):
                 li = event['loop_index']
+                import pprint
+                pprint.pprint(event)
+                pprint.pprint(loop_start_times)
                 try:
+                    print(e_i, li, len(loop_reverse_index),loop_reverse_index[li])
+
                     loop_start = loop_start_times[loop_reverse_index[li]]
                 except:
-                    import pprint
-                    pprint.pprint(event)
                     import ipdb
                     ipdb.set_trace()
                 loop_interval, duration, loop_time, fraction = None, None, None, None
@@ -409,6 +423,7 @@ class LoopPerfTimerTesterHelper(object):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     l = LoopPerfTimerTester(10)
     l.run()
     l.stop()
