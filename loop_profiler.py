@@ -11,7 +11,6 @@ import logging
 from threading import get_ident, Lock, Thread
 
 
-
 class LoopPerfTimer(object):
     """
     Profiler for realtime loops.
@@ -27,7 +26,7 @@ class LoopPerfTimer(object):
         raise Exception("Only use statically.")
 
     @staticmethod
-    def reset_enable(burn_in = 0):
+    def reset_enable(burn_in=0):
         """
         Clear data & start collecting again.
         :param burn_in:  do not collect data for the first burn_in loops.
@@ -49,25 +48,25 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def mark_loop_start():
-        
+
         ident = get_ident()
-        index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
         LoopPerfTimer._LOOP_INDEX += 1
-        LoopPerfTimer._BURN_IN -=1
-        
+        LoopPerfTimer._BURN_IN -= 1
+
         if LoopPerfTimer._BURN_IN >= 0:
             return
-        elif LoopPerfTimer._BURN_IN ==-1:
+        elif LoopPerfTimer._BURN_IN == -1:
             logging.info("Loop Profile burn-in period expired.")
-        
+
         if LoopPerfTimer._MAIN_THREAD_ID is not None and ident != LoopPerfTimer._MAIN_THREAD_ID:
             raise Exception("Always call mark_loop_start() from the same (main) thread.")
 
         with LoopPerfTimer._LOCK:
+            ### logging.info("ADDING:  %s  (%i)" % ("loop start", LoopPerfTimer._LOOP_INDEX))
             LoopPerfTimer._EVENTS.append({'thread_id': ident,
                                           'time': time.perf_counter(),
                                           'tag': None,
-                                          'loop_index': index,
+                                          'loop_index': LoopPerfTimer._LOOP_INDEX,
                                           'type': 'loop start'})
             LoopPerfTimer._T_START = time.perf_counter()
             LoopPerfTimer._MAIN_THREAD_ID = ident
@@ -81,6 +80,8 @@ class LoopPerfTimer(object):
             raise Exception("mark_stop() can only be called from the thread that called mark_loop_start()")
 
         with LoopPerfTimer._LOCK:
+            ### logging.info("ADDING:  %s  (%i)" % ("loop stop", index))
+
             LoopPerfTimer._EVENTS.append({'thread_id': ident,
                                           'time': time.perf_counter(),
                                           'tag': None,
@@ -97,7 +98,7 @@ class LoopPerfTimer(object):
                 ident = get_ident()
                 index = LoopPerfTimer._LOOP_INDEX if LoopPerfTimer._LOOP_INDEX > -1 else 0
                 func_name = func.__name__
-                if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >=0:
+                if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >= 0:
                     return func(*args)
 
                 start = time.perf_counter()
@@ -112,6 +113,8 @@ class LoopPerfTimer(object):
                           'loop_index': index,
                           'stop': stop,
                           'type': 'function'}
+                ### logging.info("ADDING:  %i  - %s  (%i)" % (ident, func_name, index))
+
                 LoopPerfTimer._EVENTS.append(record)
 
                 return rv
@@ -122,7 +125,7 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def add_marker(name, tag=None):
-        if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >=0:
+        if not LoopPerfTimer._ENABLED or LoopPerfTimer._BURN_IN >= 0:
             return
 
         ident = get_ident()
@@ -133,6 +136,8 @@ class LoopPerfTimer(object):
                   'thread_id': ident,
                   'time': time.perf_counter(),
                   'type': 'marker'}
+        ### logging.info("ADDING:  %i  - %s  (%i)" % (ident, "Marker %s" % (name,), LoopPerfTimer._LOOP_INDEX))
+
         LoopPerfTimer._EVENTS.append(record)
 
     @staticmethod
@@ -204,16 +209,7 @@ class LoopPerfTimer(object):
                                           'type': e['type']}
             for e_i, event in enumerate(events):
                 li = event['loop_index']
-                import pprint
-                pprint.pprint(event)
-                pprint.pprint(loop_start_times)
-                try:
-                    print(e_i, li, len(loop_reverse_index),loop_reverse_index[li])
-
-                    loop_start = loop_start_times[loop_reverse_index[li]]
-                except:
-                    import ipdb
-                    ipdb.set_trace()
+                loop_start = loop_start_times[loop_reverse_index[li]]
                 loop_interval, duration, loop_time, fraction = None, None, None, None
                 if event['type'] == 'function':
                     loop_interval = [event['start'] - loop_start, event['stop'] - loop_start]
@@ -239,7 +235,7 @@ class LoopPerfTimer(object):
         if print_avgs:
             print("\n\nFunctions\tname\t\t\ttimes\t\tavg. duration (ms) [std.]\tavg duration (pct)")
             print("\n\t\t(all loops)\t\t%i\t%.3f (ms) [%.5f]" % (
-            n_loops, np.mean(loop_durations) * 1000., np.std(loop_durations) * 1000))
+                n_loops, np.mean(loop_durations) * 1000., np.std(loop_durations) * 1000))
             for thread_id in thread_ids:
                 avg_fracs = []
                 avg_durations = []
@@ -325,8 +321,7 @@ class LoopPerfTimer(object):
             plt.xlim([x_min, x_max])
             plt.show()
 
-            
-            
+
 def make_n_colors(n, scale=(.8, .69, .46)):
     """
     Make a palette of evenly distanced colors.
@@ -341,10 +336,9 @@ def make_n_colors(n, scale=(.8, .69, .46)):
                         [scale[2] * np.abs(np.sin(color_range))]])
 
     odds = colors[:, 1::2]
-    colors[:,1::2] = odds[::-1]
+    colors[:, 1::2] = odds[::-1]
     colors = colors[:, :-1]
     return colors.T
-
 
 
 def perf_sleep(t):
