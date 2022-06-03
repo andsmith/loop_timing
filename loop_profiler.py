@@ -5,9 +5,9 @@ With plots.
 import time
 from threading import get_ident, Lock, Thread
 import enum
-
-from plot_data import plot_profile_data
-from events import EventTypes
+import sys
+from loop_timing.plot_data import plot_profile_data
+from loop_timing.events import EventTypes
 
 
 class WrongThreadException(Exception):
@@ -23,15 +23,13 @@ class LoopPerfTimer(object):
     def __init__(self):
         raise Exception("Call LoopPerfTimer's methods statically.  Do not instantiate.")
 
-    _main_thread_id = get_ident()
+    _main_thread_id = None
     _enabled = True
     _loop_index = -1
     _events = []
-    _disabled_time = None
-    _n_func_calls_started = 0
     _lock = Lock()
-    _n_func_calls_finished = 0
     _burn_in = 0
+    _display_after = 0
 
     @staticmethod
     def _check_ident():
@@ -44,17 +42,22 @@ class LoopPerfTimer(object):
             raise WrongThreadException("Only call from main thread!")
 
     @staticmethod
-    def reset(enable=False, burn_in=0):
+    def reset(enable=False, burn_in=0, display_after=0, ):
         """
-        Clear all events, reset, etc.
+        Clear all events, settings & reset.
         :param enable:  Start collecting data as soon as complete
         :param burn_in:  throw away this many loops first
+        :param display_after:  Plot then exit after this loop count.
         """
+        if burn_in>0 and display_after <= burn_in:
+            raise Exception("Can't display loop %i to loop %i." % (burn_in, display_after))
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
             _LOOP_INDEX = -1
             LoopPerfTimer._events = []
             LoopPerfTimer._enabled = enable
+            LoopPerfTimer._display_after = display_after
+            LoopPerfTimer._main_thread_id = None
 
     @staticmethod
     def disable():
@@ -66,13 +69,11 @@ class LoopPerfTimer(object):
             LoopPerfTimer._enabled = False
 
     @staticmethod
-    def enable(burn_in=0):
+    def enable():
         """
         Start/resume collecting events.
-        :param burn_in:  throw away this many loops first
         """
         with LoopPerfTimer._lock:
-            LoopPerfTimer._burn_in = burn_in
             LoopPerfTimer._enabled = True
 
     @staticmethod
@@ -87,6 +88,7 @@ class LoopPerfTimer(object):
 
         if LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
             return ident, t
+
         with LoopPerfTimer._lock:
             if LoopPerfTimer._enabled:
                 LoopPerfTimer._events.append(dict(thread_id=ident,
@@ -102,10 +104,19 @@ class LoopPerfTimer(object):
         Call at the beginning of every loop, to align plots, etc.
         Always call from the same thread.  (this defines the "main" thread)
         """
+        if LoopPerfTimer._main_thread_id is None:
+            with LoopPerfTimer._lock:  # shouldn't be calling this from more than one thread anyway
+                LoopPerfTimer._main_thread_id = get_ident()
         LoopPerfTimer._check_ident()
         LoopPerfTimer._loop_index += 1
-        _, t_start = LoopPerfTimer._add_event(EventTypes.LOOP_START, LoopPerfTimer._loop_index,
-                                              t=time.perf_counter())
+        if LoopPerfTimer._loop_index >= LoopPerfTimer._display_after:
+            LoopPerfTimer.display_data()
+            sys.exit()
+        if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in - 1:
+
+            _, t_start = LoopPerfTimer._add_event(EventTypes.LOOP_START, LoopPerfTimer._loop_index,
+                                                  t=time.perf_counter())
+
 
     @staticmethod
     def time_function(func):
@@ -116,13 +127,14 @@ class LoopPerfTimer(object):
         def timed_func(*args, **kwargs):
             index = LoopPerfTimer._loop_index
             func_name = func.__qualname__
-            LoopPerfTimer._n_func_calls_started += 1
+
+            if not LoopPerfTimer._enabled or  LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
+                return
 
             start = time.perf_counter()
             rv = func(*args, **kwargs)
             stop = time.perf_counter()
 
-            LoopPerfTimer._n_func_calls_finished += 1
             LoopPerfTimer._add_event(EventTypes.FUNC_CALL,
                                      index,
                                      t=start,
@@ -139,7 +151,7 @@ class LoopPerfTimer(object):
         """
         Call to add a named marker, i.e. to plots
         """
-        if not LoopPerfTimer._enabled:
+        if not LoopPerfTimer._enabled or LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
             return
         LoopPerfTimer._add_event(EventTypes.MARKER,
                                  LoopPerfTimer._loop_index,
@@ -148,8 +160,6 @@ class LoopPerfTimer(object):
 
     @staticmethod
     def display_data():
-        if LoopPerfTimer._enabled:
-            raise Exception("Call mark_stop() before display_data().")
         plot_profile_data(events=LoopPerfTimer._events,
                           main_thread_id=LoopPerfTimer._main_thread_id,
                           burn_in=LoopPerfTimer._burn_in)

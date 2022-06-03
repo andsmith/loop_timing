@@ -13,7 +13,7 @@ class LoopPerfTimerDemo(object):
         self._stop = False
         self._helper = HelperClass()
         self._thread = Thread(target=self._thread_proc)
-        self._thread.start()
+        #self._thread.start()
 
     def stop(self):
         time.sleep(.1)  # wait for thread methods to finish
@@ -21,11 +21,15 @@ class LoopPerfTimerDemo(object):
 
     @lt.time_function
     def _thread_method(self, x):
-        return x * np.mean(np.random.randn(700))
+
+        val= x * np.mean(np.random.randn(700))
+        print("Val:  %s" %(val,))
+        return val
 
     def _thread_proc(self):
         a = 0
         while not self._stop:
+            #print("a", a)
             a += 1
             lt.add_marker("test_mark_thread")
             a = self._thread_method(a)
@@ -52,7 +56,7 @@ class LoopPerfTimerDemo(object):
     def run(self):
         a, b = 0, 0
 
-        lt.enable(burn_in=self._burn_in)
+        lt.reset(enable=True, burn_in=self._burn_in)
         for i in range(self._n):
             lt.mark_loop_start()
             self._helper.calculate_1()

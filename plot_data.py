@@ -1,9 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import re
-from events import EventTypes
+from loop_timing.events import EventTypes
 import numpy as np
-from util import uniquify
 
 
 def make_n_colors(n, scale=(.8, .69, .46)):
