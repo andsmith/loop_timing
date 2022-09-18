@@ -31,7 +31,7 @@ class LoopPerfTimer(object):
     _lock = Lock()
     _burn_in = 0
     _display_after = 0
-    _save_file=None
+    _save_file = None
 
     @staticmethod
     def _check_ident():
@@ -44,17 +44,15 @@ class LoopPerfTimer(object):
             raise WrongThreadException("Only call from main thread!")
 
     @staticmethod
-    def reset(enable=False, burn_in=0, display_after=0, save_results=None):
+    def reset(enable=False, burn_in=0, display_after=20, save_results=None):
         """
         Clear all events, settings & reset.
         :param enable:  Start collecting data as soon as complete
         :param burn_in:  throw away this many loops first
-        :param display_after:  Plot then exit after this loop count.
+        :param display_after:  Plot then exit after this loop count. (AFTER burn-in)
         :param save_results:  Save to file instead of plotting.
             plot:  "python loop_profiler.py profile_data.pkl"
         """
-        if burn_in > 0 and display_after <= burn_in:
-            raise Exception("Can't display loop %i to loop %i." % (burn_in, display_after))
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
             _LOOP_INDEX = -1
@@ -114,7 +112,10 @@ class LoopPerfTimer(object):
                 LoopPerfTimer._main_thread_id = get_ident()
         LoopPerfTimer._check_ident()
         LoopPerfTimer._loop_index += 1
-        if LoopPerfTimer._loop_index >= LoopPerfTimer._display_after:
+        if LoopPerfTimer._loop_index == LoopPerfTimer._burn_in:
+            print("Finished burn in.")
+        if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in + LoopPerfTimer._display_after:
+            print("Finished collecting data.")
             LoopPerfTimer.display_data()
             sys.exit()
         if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in - 1:
@@ -132,10 +133,10 @@ class LoopPerfTimer(object):
             func_name = func.__qualname__
 
             if not LoopPerfTimer._enabled or LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
+                # don't time function call
                 return func(*args, **kwargs)
 
-            print(func.__name__)
-
+            # time function call
             start = time.perf_counter()
             rv = func(*args, **kwargs)
             stop = time.perf_counter()
@@ -193,6 +194,7 @@ class LoopPerfTimer(object):
                               main_thread_id=LoopPerfTimer._main_thread_id,
                               burn_in=LoopPerfTimer._burn_in)
         sys.exit()
+
 
 def perf_sleep(t):
     start = time.perf_counter()

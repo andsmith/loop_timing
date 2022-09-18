@@ -1,7 +1,9 @@
 import numpy as np
 import re
 from loop_timing.events import EventTypes
+import pprint
 import numpy as np
+
 
 def make_n_colors(n, scale=(.8, .69, .46)):
     """
@@ -86,6 +88,14 @@ def _get_name_order(events, names):
     return new_order
 
 
+def print_call_stats(events):
+    function_events = [e for e in events if e['type'] == EventTypes.FUNC_CALL and 'name' in e ]
+    func_names = list(set([e['name'] for e in function_events]))
+    counts = {k: len([e for e in function_events if e['name'] == k ]) for k in func_names}
+    print("Function calls:")
+    pprint.pprint(counts)
+
+
 def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
     """
     Plot data, after profiler has been deactivated
@@ -125,6 +135,7 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
 
     thread_ids = list(set([event['thread_id'] for event in events]))
     n_threads = len(thread_ids)
+    print("Plotting data recorded from %i threads." % (n_threads,))
 
     _disambiguate_threads_and_functions(events, main_thread_id)
 
@@ -192,7 +203,8 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
             name_types[event_subset[0]['name']] = event_subset[0]['type']
             if event_subset[0]['type'] == EventTypes.FUNC_CALL:
                 _space('function')
-                y_start, y_stop = y_val[0], y_val[0]
+                y_start, y_stop = y_val[0], y_val[0]  # horizontal line
+
                 for event in event_subset:
                     x_start = event['start_t'] - loop_start_time
                     x_stop = event['stop_t'] - loop_start_time

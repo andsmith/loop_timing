@@ -1,4 +1,4 @@
-from loop_profiler import LoopPerfTimer as lt
+from .loop_profiler import LoopPerfTimer as lt
 import numpy as np
 from threading import Thread
 import time
@@ -7,13 +7,21 @@ import time
 class LoopPerfTimerDemo(object):
     """Sample class to demonstrate LoopPerfTimer"""
 
-    def __init__(self, n=25, burn=5):
+    def __init__(self, n=25, burn=0):
         self._n = n
         self._burn_in = burn
         self._stop = False
         self._helper = HelperClass()
         self._thread = Thread(target=self._thread_proc)
-        #self._thread.start()
+        self._thread.start()
+        self._slow_calc_size = 300
+
+    @lt.time_function
+    def _calculate_speeding_up(self,mul=9000):
+        x = np.random.rand(self._slow_calc_size*mul).reshape((self._slow_calc_size, mul))
+        a = np.sum(x)
+        self._slow_calc_size = int(self._slow_calc_size / 1.5)  # gets faster
+        return a
 
     def stop(self):
         time.sleep(.1)  # wait for thread methods to finish
@@ -23,7 +31,6 @@ class LoopPerfTimerDemo(object):
     def _thread_method(self, x):
 
         val= x * np.mean(np.random.randn(700))
-        print("Val:  %s" %(val,))
         return val
 
     def _thread_proc(self):
@@ -36,13 +43,15 @@ class LoopPerfTimerDemo(object):
             time.sleep(0.005)
 
     @lt.time_function
-    def calculate_1(self, x):
+    def calculate_random(self, x):
         for _ in range(100):
             x += np.sum(np.random.rand(100))
         return x
 
     @lt.time_function
     def calculate_2(self, x):
+
+
         for _ in range(np.random.randint(50, 60, 1)[0]):
             x += np.sum(np.random.rand(1000))
 
@@ -56,14 +65,15 @@ class LoopPerfTimerDemo(object):
     def run(self):
         a, b = 0, 0
 
-        lt.reset(enable=True, burn_in=self._burn_in)
+        lt.reset(enable=True, burn_in=self._burn_in, display_after=self._n)
         for i in range(self._n):
             lt.mark_loop_start()
             self._helper.calculate_1()
             a = self.calculate_2(a)
-            a = self.calculate_1(a)
+            a = self.calculate_random(a)
             self._helper.foo_bar()
             b = self.calculate_2(a)
+            self._calculate_speeding_up()
             lt.add_marker('test_mark_main')
             a = sub_calc_2(b)
         lt.disable()
