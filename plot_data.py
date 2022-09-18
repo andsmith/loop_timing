@@ -1,9 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import re
 from loop_timing.events import EventTypes
 import numpy as np
-
 
 def make_n_colors(n, scale=(.8, .69, .46)):
     """
@@ -96,6 +94,9 @@ def plot_profile_data(events, main_thread_id, chop_early=False, burn_in=0):
     :chop_early:  Remove events appearing before first loop_start
     :burn_in:  Discard this many loops before collecting data.
     """
+    # need this here to avoid problems with cv2
+    import matplotlib.pyplot as plt
+
     events = sorted(events, key=lambda event: event['time'])
     if not chop_early:
         for e in events:

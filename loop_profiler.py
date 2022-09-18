@@ -6,8 +6,9 @@ import time
 from threading import get_ident, Lock, Thread
 import enum
 import sys
-from loop_timing.plot_data import plot_profile_data
-from loop_timing.events import EventTypes
+from .plot_data import plot_profile_data
+from .events import EventTypes
+import pickle
 
 
 class WrongThreadException(Exception):
@@ -30,6 +31,7 @@ class LoopPerfTimer(object):
     _lock = Lock()
     _burn_in = 0
     _display_after = 0
+    _save_file=None
 
     @staticmethod
     def _check_ident():
@@ -42,14 +44,16 @@ class LoopPerfTimer(object):
             raise WrongThreadException("Only call from main thread!")
 
     @staticmethod
-    def reset(enable=False, burn_in=0, display_after=0, ):
+    def reset(enable=False, burn_in=0, display_after=0, save_results=None):
         """
         Clear all events, settings & reset.
         :param enable:  Start collecting data as soon as complete
         :param burn_in:  throw away this many loops first
         :param display_after:  Plot then exit after this loop count.
+        :param save_results:  Save to file instead of plotting.
+            plot:  "python loop_profiler.py profile_data.pkl"
         """
-        if burn_in>0 and display_after <= burn_in:
+        if burn_in > 0 and display_after <= burn_in:
             raise Exception("Can't display loop %i to loop %i." % (burn_in, display_after))
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
@@ -58,6 +62,7 @@ class LoopPerfTimer(object):
             LoopPerfTimer._enabled = enable
             LoopPerfTimer._display_after = display_after
             LoopPerfTimer._main_thread_id = None
+            LoopPerfTimer._save_file = save_results
 
     @staticmethod
     def disable():
@@ -113,10 +118,8 @@ class LoopPerfTimer(object):
             LoopPerfTimer.display_data()
             sys.exit()
         if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in - 1:
-
             _, t_start = LoopPerfTimer._add_event(EventTypes.LOOP_START, LoopPerfTimer._loop_index,
                                                   t=time.perf_counter())
-
 
     @staticmethod
     def time_function(func):
@@ -128,8 +131,10 @@ class LoopPerfTimer(object):
             index = LoopPerfTimer._loop_index
             func_name = func.__qualname__
 
-            if not LoopPerfTimer._enabled or  LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
-                return
+            if not LoopPerfTimer._enabled or LoopPerfTimer._loop_index < LoopPerfTimer._burn_in:
+                return func(*args, **kwargs)
+
+            print(func.__name__)
 
             start = time.perf_counter()
             rv = func(*args, **kwargs)
@@ -159,14 +164,45 @@ class LoopPerfTimer(object):
                                  t=time.perf_counter())
 
     @staticmethod
-    def display_data():
-        plot_profile_data(events=LoopPerfTimer._events,
-                          main_thread_id=LoopPerfTimer._main_thread_id,
-                          burn_in=LoopPerfTimer._burn_in)
+    def save_data():
+        data = dict(events=LoopPerfTimer._events,
+                    main_thread_id=LoopPerfTimer._main_thread_id,
+                    burn_in=LoopPerfTimer._burn_in)
+        with open(LoopPerfTimer._save_file, 'wb') as outfile:
+            pickle.dump(data, outfile)
+        print("Saved loop profile data to file:  %s" % (LoopPerfTimer._save_file,))
 
+    @staticmethod
+    def load_data(filename):
+        with open(filename, 'rb') as infile:
+            data = pickle.load(infile)
+        LoopPerfTimer._events = data['events']
+        LoopPerfTimer._main_thread_id = data['main_thread_id']
+        LoopPerfTimer._burn_in = data['burn_in']
+
+        print("Loaded %i loop profile events from file:  %s" % (len(LoopPerfTimer._events), filename,))
+
+    @staticmethod
+    def display_data():
+        if LoopPerfTimer._save_file is not None:
+            print("Saving data instead of plotting.")
+            LoopPerfTimer.save_data()
+        else:
+            plot_profile_data(events=LoopPerfTimer._events,
+                              main_thread_id=LoopPerfTimer._main_thread_id,
+                              burn_in=LoopPerfTimer._burn_in)
+        sys.exit()
 
 def perf_sleep(t):
     start = time.perf_counter()
     while time.perf_counter() - start < t:
         pass
     return time.perf_counter() - start
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("To plot results, run:  python loop_profile.py loop_profile_data.pkl")
+        sys.exit()
+    LoopPerfTimer.load_data(filename=sys.argv[1])
+    LoopPerfTimer.display_data()
