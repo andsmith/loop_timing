@@ -171,6 +171,7 @@ class LoopPerfTimer(object):
         with open(LoopPerfTimer._save_file, 'wb') as outfile:
             pickle.dump(data, outfile)
         print("Saved loop profile data to file:  %s" % (LoopPerfTimer._save_file,))
+        print("Plot:  python -m loop_timing.loop_profiler %s" % (LoopPerfTimer._save_file,))
 
     @staticmethod
     def load_data(filename):
