@@ -1,3 +1,5 @@
+import logging
+
 from .loop_profiler import LoopPerfTimer as lt
 import numpy as np
 from threading import Thread
@@ -110,6 +112,7 @@ class HelperClass(object):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     lp_demo = LoopPerfTimerDemo(15, 5)
     lp_demo.run()
     lp_demo.stop()
