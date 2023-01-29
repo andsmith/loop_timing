@@ -123,9 +123,12 @@ class LoopPerfTimer(object):
         if LoopPerfTimer._loop_index == LoopPerfTimer._burn_in:
             logging.info("Finished burn in.")
         if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in + LoopPerfTimer._display_after:
-            logging.info("Finished collecting data.")
-            LoopPerfTimer.display_data()
-            sys.exit()
+            if LoopPerfTimer._enabled:
+                logging.info("Finished collecting data.")
+
+                LoopPerfTimer.display_data()
+                sys.exit()
+
         if LoopPerfTimer._loop_index >= LoopPerfTimer._burn_in - 1:
             _, t_start = LoopPerfTimer._add_event(EventTypes.LOOP_START, LoopPerfTimer._loop_index,
                                                   t=time.perf_counter())
