@@ -58,7 +58,7 @@ class LoopPerfTimer(object):
         logging.info("Loop profiler resetting:  starting now:  %s, burn:  %i, record:  %i, save:  %s" % (enable,
                                                                                                          burn_in,
                                                                                                          display_after,
-                                                                                                         save_results))
+                                                                                                         save_filename))
         with LoopPerfTimer._lock:
             LoopPerfTimer._burn_in = burn_in
             _LOOP_INDEX = -1
