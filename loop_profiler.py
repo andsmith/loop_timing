@@ -46,13 +46,13 @@ class LoopPerfTimer(object):
             raise WrongThreadException("Only call from main thread!")
 
     @staticmethod
-    def reset(enable=False, burn_in=0, display_after=20, save_results=None):
+    def reset(enable=False, burn_in=0, display_after=20, save_filename=None):
         """
         Clear all events, settings & reset.
         :param enable:  Start collecting data as soon as complete
         :param burn_in:  throw away this many loops first
         :param display_after:  Plot then exit after this loop count. (AFTER burn-in)
-        :param save_results:  Save to file instead of plotting.
+        :param save_filename:  Save to file instead of plotting.
             plot:  "python loop_profiler.py profile_data.pkl"
         """
         logging.info("Loop profiler resetting:  starting now:  %s, burn:  %i, record:  %i, save:  %s" % (enable,
@@ -66,7 +66,7 @@ class LoopPerfTimer(object):
             LoopPerfTimer._enabled = enable
             LoopPerfTimer._display_after = display_after
             LoopPerfTimer._main_thread_id = None
-            LoopPerfTimer._save_file = save_results
+            LoopPerfTimer._save_file = save_filename
 
     @staticmethod
     def disable():
